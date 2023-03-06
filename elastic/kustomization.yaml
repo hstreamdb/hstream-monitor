@@ -1,0 +1,19 @@
+namespace: elastic-system
+
+secretGenerator:
+# 自定义 es 默认用户
+- name: hstream-es-user-secret
+  files:
+  - user.txt
+  options:
+    labels:
+      app.kubernetes.io/part-of: eck
+      app.kubernetes.io/version: 8.6.1
+    
+resources:
+- elasticsearch.yaml
+- kibana.yaml
+- filebeat.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true

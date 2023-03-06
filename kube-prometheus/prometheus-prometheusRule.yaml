@@ -1,0 +1,549 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  labels:
+    app.kubernetes.io/component: prometheus
+    app.kubernetes.io/instance: k8s
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/part-of: kube-prometheus
+    app.kubernetes.io/version: 2.41.0
+    prometheus: k8s
+    role: alert-rules
+  name: prometheus-k8s-prometheus-rules
+  namespace: monitoring
+spec:
+  groups:
+  - name: prometheus
+    rules:
+    - alert: PrometheusBadConfig
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has failed to
+          reload its configuration.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusbadconfig
+        summary: Failed Prometheus configuration reload.
+      expr: |
+        # Without max_over_time, failed scrapes could create false negatives, see
+        # https://www.robustperception.io/alerting-on-gauges-in-prometheus-2-0 for details.
+        max_over_time(prometheus_config_last_reload_successful{job="prometheus-k8s",namespace="monitoring"}[5m]) == 0
+      for: 10m
+      labels:
+        severity: critical
+    - alert: PrometheusNotificationQueueRunningFull
+      annotations:
+        description: Alert notification queue of Prometheus {{$labels.namespace}}/{{$labels.pod}}
+          is running full.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusnotificationqueuerunningfull
+        summary: Prometheus alert notification queue predicted to run full in less
+          than 30m.
+      expr: |
+        # Without min_over_time, failed scrapes could create false negatives, see
+        # https://www.robustperception.io/alerting-on-gauges-in-prometheus-2-0 for details.
+        (
+          predict_linear(prometheus_notifications_queue_length{job="prometheus-k8s",namespace="monitoring"}[5m], 60 * 30)
+        >
+          min_over_time(prometheus_notifications_queue_capacity{job="prometheus-k8s",namespace="monitoring"}[5m])
+        )
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusErrorSendingAlertsToSomeAlertmanagers
+      annotations:
+        description: '{{ printf "%.1f" $value }}% errors while sending alerts from
+          Prometheus {{$labels.namespace}}/{{$labels.pod}} to Alertmanager {{$labels.alertmanager}}.'
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheuserrorsendingalertstosomealertmanagers
+        summary: Prometheus has encountered more than 1% errors sending alerts to
+          a specific Alertmanager.
+      expr: |
+        (
+          rate(prometheus_notifications_errors_total{job="prometheus-k8s",namespace="monitoring"}[5m])
+        /
+          rate(prometheus_notifications_sent_total{job="prometheus-k8s",namespace="monitoring"}[5m])
+        )
+        * 100
+        > 1
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusNotConnectedToAlertmanagers
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} is not connected
+          to any Alertmanagers.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusnotconnectedtoalertmanagers
+        summary: Prometheus is not connected to any Alertmanagers.
+      expr: |
+        # Without max_over_time, failed scrapes could create false negatives, see
+        # https://www.robustperception.io/alerting-on-gauges-in-prometheus-2-0 for details.
+        max_over_time(prometheus_notifications_alertmanagers_discovered{job="prometheus-k8s",namespace="monitoring"}[5m]) < 1
+      for: 10m
+      labels:
+        severity: warning
+    - alert: PrometheusTSDBReloadsFailing
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has detected
+          {{$value | humanize}} reload failures over the last 3h.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheustsdbreloadsfailing
+        summary: Prometheus has issues reloading blocks from disk.
+      expr: |
+        increase(prometheus_tsdb_reloads_failures_total{job="prometheus-k8s",namespace="monitoring"}[3h]) > 0
+      for: 4h
+      labels:
+        severity: warning
+    - alert: PrometheusTSDBCompactionsFailing
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has detected
+          {{$value | humanize}} compaction failures over the last 3h.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheustsdbcompactionsfailing
+        summary: Prometheus has issues compacting blocks.
+      expr: |
+        increase(prometheus_tsdb_compactions_failed_total{job="prometheus-k8s",namespace="monitoring"}[3h]) > 0
+      for: 4h
+      labels:
+        severity: warning
+    - alert: PrometheusNotIngestingSamples
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} is not ingesting
+          samples.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusnotingestingsamples
+        summary: Prometheus is not ingesting samples.
+      expr: |
+        (
+          rate(prometheus_tsdb_head_samples_appended_total{job="prometheus-k8s",namespace="monitoring"}[5m]) <= 0
+        and
+          (
+            sum without(scrape_job) (prometheus_target_metadata_cache_entries{job="prometheus-k8s",namespace="monitoring"}) > 0
+          or
+            sum without(rule_group) (prometheus_rule_group_rules{job="prometheus-k8s",namespace="monitoring"}) > 0
+          )
+        )
+      for: 10m
+      labels:
+        severity: warning
+    - alert: PrometheusDuplicateTimestamps
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} is dropping
+          {{ printf "%.4g" $value  }} samples/s with different values but duplicated
+          timestamp.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusduplicatetimestamps
+        summary: Prometheus is dropping samples with duplicate timestamps.
+      expr: |
+        rate(prometheus_target_scrapes_sample_duplicate_timestamp_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 10m
+      labels:
+        severity: warning
+    - alert: PrometheusOutOfOrderTimestamps
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} is dropping
+          {{ printf "%.4g" $value  }} samples/s with timestamps arriving out of order.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusoutofordertimestamps
+        summary: Prometheus drops samples with out-of-order timestamps.
+      expr: |
+        rate(prometheus_target_scrapes_sample_out_of_order_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 10m
+      labels:
+        severity: warning
+    - alert: PrometheusRemoteStorageFailures
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} failed to send
+          {{ printf "%.1f" $value }}% of the samples to {{ $labels.remote_name}}:{{
+          $labels.url }}
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusremotestoragefailures
+        summary: Prometheus fails to send samples to remote storage.
+      expr: |
+        (
+          (rate(prometheus_remote_storage_failed_samples_total{job="prometheus-k8s",namespace="monitoring"}[5m]) or rate(prometheus_remote_storage_samples_failed_total{job="prometheus-k8s",namespace="monitoring"}[5m]))
+        /
+          (
+            (rate(prometheus_remote_storage_failed_samples_total{job="prometheus-k8s",namespace="monitoring"}[5m]) or rate(prometheus_remote_storage_samples_failed_total{job="prometheus-k8s",namespace="monitoring"}[5m]))
+          +
+            (rate(prometheus_remote_storage_succeeded_samples_total{job="prometheus-k8s",namespace="monitoring"}[5m]) or rate(prometheus_remote_storage_samples_total{job="prometheus-k8s",namespace="monitoring"}[5m]))
+          )
+        )
+        * 100
+        > 1
+      for: 15m
+      labels:
+        severity: critical
+    - alert: PrometheusRemoteWriteBehind
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} remote write
+          is {{ printf "%.1f" $value }}s behind for {{ $labels.remote_name}}:{{ $labels.url
+          }}.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusremotewritebehind
+        summary: Prometheus remote write is behind.
+      expr: |
+        # Without max_over_time, failed scrapes could create false negatives, see
+        # https://www.robustperception.io/alerting-on-gauges-in-prometheus-2-0 for details.
+        (
+          max_over_time(prometheus_remote_storage_highest_timestamp_in_seconds{job="prometheus-k8s",namespace="monitoring"}[5m])
+        - ignoring(remote_name, url) group_right
+          max_over_time(prometheus_remote_storage_queue_highest_sent_timestamp_seconds{job="prometheus-k8s",namespace="monitoring"}[5m])
+        )
+        > 120
+      for: 15m
+      labels:
+        severity: critical
+    - alert: PrometheusRemoteWriteDesiredShards
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} remote write
+          desired shards calculation wants to run {{ $value }} shards for queue {{
+          $labels.remote_name}}:{{ $labels.url }}, which is more than the max of {{
+          printf `prometheus_remote_storage_shards_max{instance="%s",job="prometheus-k8s",namespace="monitoring"}`
+          $labels.instance | query | first | value }}.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusremotewritedesiredshards
+        summary: Prometheus remote write desired shards calculation wants to run more
+          than configured max shards.
+      expr: |
+        # Without max_over_time, failed scrapes could create false negatives, see
+        # https://www.robustperception.io/alerting-on-gauges-in-prometheus-2-0 for details.
+        (
+          max_over_time(prometheus_remote_storage_shards_desired{job="prometheus-k8s",namespace="monitoring"}[5m])
+        >
+          max_over_time(prometheus_remote_storage_shards_max{job="prometheus-k8s",namespace="monitoring"}[5m])
+        )
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusRuleFailures
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has failed to
+          evaluate {{ printf "%.0f" $value }} rules in the last 5m.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusrulefailures
+        summary: Prometheus is failing rule evaluations.
+      expr: |
+        increase(prometheus_rule_evaluation_failures_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: critical
+    - alert: PrometheusMissingRuleEvaluations
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has missed {{
+          printf "%.0f" $value }} rule group evaluations in the last 5m.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusmissingruleevaluations
+        summary: Prometheus is missing rule evaluations due to slow rule group evaluation.
+      expr: |
+        increase(prometheus_rule_group_iterations_missed_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusTargetLimitHit
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has dropped
+          {{ printf "%.0f" $value }} targets because the number of targets exceeded
+          the configured target_limit.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheustargetlimithit
+        summary: Prometheus has dropped targets because some scrape configs have exceeded
+          the targets limit.
+      expr: |
+        increase(prometheus_target_scrape_pool_exceeded_target_limit_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusLabelLimitHit
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has dropped
+          {{ printf "%.0f" $value }} targets because some samples exceeded the configured
+          label_limit, label_name_length_limit or label_value_length_limit.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheuslabellimithit
+        summary: Prometheus has dropped targets because some scrape configs have exceeded
+          the labels limit.
+      expr: |
+        increase(prometheus_target_scrape_pool_exceeded_label_limits_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusScrapeBodySizeLimitHit
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has failed {{
+          printf "%.0f" $value }} scrapes in the last 5m because some targets exceeded
+          the configured body_size_limit.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusscrapebodysizelimithit
+        summary: Prometheus has dropped some targets that exceeded body size limit.
+      expr: |
+        increase(prometheus_target_scrapes_exceeded_body_size_limit_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusScrapeSampleLimitHit
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} has failed {{
+          printf "%.0f" $value }} scrapes in the last 5m because some targets exceeded
+          the configured sample_limit.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheusscrapesamplelimithit
+        summary: Prometheus has failed scrapes that have exceeded the configured sample
+          limit.
+      expr: |
+        increase(prometheus_target_scrapes_exceeded_sample_limit_total{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusTargetSyncFailure
+      annotations:
+        description: '{{ printf "%.0f" $value }} targets in Prometheus {{$labels.namespace}}/{{$labels.pod}}
+          have failed to sync because invalid configuration was supplied.'
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheustargetsyncfailure
+        summary: Prometheus has failed to sync targets.
+      expr: |
+        increase(prometheus_target_sync_failed_total{job="prometheus-k8s",namespace="monitoring"}[30m]) > 0
+      for: 5m
+      labels:
+        severity: critical
+    - alert: PrometheusHighQueryLoad
+      annotations:
+        description: Prometheus {{$labels.namespace}}/{{$labels.pod}} query API has
+          less than 20% available capacity in its query engine for the last 15 minutes.
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheushighqueryload
+        summary: Prometheus is reaching its maximum capacity serving concurrent requests.
+      expr: |
+        avg_over_time(prometheus_engine_queries{job="prometheus-k8s",namespace="monitoring"}[5m]) / max_over_time(prometheus_engine_queries_concurrent_max{job="prometheus-k8s",namespace="monitoring"}[5m]) > 0.8
+      for: 15m
+      labels:
+        severity: warning
+    - alert: PrometheusErrorSendingAlertsToAnyAlertmanager
+      annotations:
+        description: '{{ printf "%.1f" $value }}% minimum errors while sending alerts
+          from Prometheus {{$labels.namespace}}/{{$labels.pod}} to any Alertmanager.'
+        runbook_url: https://runbooks.prometheus-operator.dev/runbooks/prometheus/prometheuserrorsendingalertstoanyalertmanager
+        summary: Prometheus encounters more than 3% errors sending alerts to any Alertmanager.
+      expr: |
+        min without (alertmanager) (
+          rate(prometheus_notifications_errors_total{job="prometheus-k8s",namespace="monitoring",alertmanager!~``}[5m])
+        /
+          rate(prometheus_notifications_sent_total{job="prometheus-k8s",namespace="monitoring",alertmanager!~``}[5m])
+        )
+        * 100
+        > 3
+      for: 15m
+      labels:
+        severity: critical
+  - name: hstream_alert
+    rules:
+      - alert: ContainerKilled
+        expr: time() - container_last_seen{name=~"deploy_.*"} > 60
+        labels:
+          alert_level: critical
+        for: 1m
+        annotations:
+          description: '{{ $value }} seconds passed since the node: {{ $labels.instance }}, container: {{ $labels.name }} was last seen'
+          summary: 'node: {{ $labels.instance }}, container: {{ $labels.name }} has been killed'
+      - alert: NodeHighCpuUsage
+        expr: (1 - sum(rate(node_cpu_seconds_total{mode="idle"}[1m])) by (instance) / sum(rate(node_cpu_seconds_total[1m])) by (instance)) * 100 > 80
+        labels:
+          alert_level: warning
+        for: 1m
+        annotations:
+          description: '{{ $labels.instance }} cpu usage is above 80%, current value: {{ $value }}'
+          summary: '{{ $labels.instance }}: High Cpu Usage detected.'
+      - alert: NodeMemoryCpuUsage
+        expr: (1 - sum(node_memory_MemAvailable_bytes) by(instance) / sum(node_memory_MemTotal_bytes) by(instance)) * 100 > 80
+        labels:
+          alert_level: warning
+        for: 1m
+        annotations:
+          description: '{{ $labels.instance }} memory usage is above 80%, current value: {{ $value }}'
+          summary: '{{ $labels.instance }}: High Memory Usage detected.'
+  - name: monitoring-disk
+    rules:
+      - record: hstream:disks:used_percent
+        expr: (1 - node_filesystem_avail_bytes{mountpoint="/data"} / node_filesystem_size_bytes{mountpoint="/data"}) * 100
+      - record: hstream:disks:io_overall
+        expr: rate(node_disk_io_now[30s])
+      - record: hstream:disks:read_rate
+        expr: rate(node_disk_read_bytes_total[30s]) / 1024 / 1024
+      - record: hstream:disks:write_rate
+        expr: rate(node_disk_written_bytes_total[30s]) / 1024 / 1024
+      - record: hstream:disks:avg_queue_len
+        expr: rate(node_disk_io_time_weighted_seconds_total[30s])
+      - record: hstream:disks:io_util
+        expr: rate(node_disk_io_time_seconds_total[30s])
+      - record: hstream:disks:avg_r_size
+        expr: rate(node_disk_read_bytes_total[30s]) / rate(node_disk_reads_completed_total[30s])
+      - record: hstream:disks:avg_w_size
+        expr: rate(node_disk_written_bytes_total[30s]) / rate(node_disk_writes_completed_total[30s])
+      - record: hstream:disks:read_await
+        expr: rate(node_disk_read_time_seconds_total[30s]) / rate(node_disk_reads_completed_total[30s])
+      - record: hstream:disks:write_await
+        expr: rate(node_disk_write_time_seconds_total[30s]) / rate(node_disk_writes_completed_total[30s])
+  - name: fs
+    rules:
+      - record: hstream_store:fs:read_bytes_total
+        expr: sum(rate(container_fs_reads_bytes_total{name ="deploy_hstore"}[5m])) without (device)
+      - record: hstream_store:fs:write_bytes_total
+        expr: sum(rate(container_fs_writes_bytes_total{name ="deploy_hstore"}[5m])) without (device)
+  - name: cluster_stats
+    rules:
+      # node stats
+      - record: cluster:node_cpu:usage_percent_1m
+        expr: (1 - sum(rate(node_cpu_seconds_total{mode="idle"}[1m])) by (instance) / sum(rate(node_cpu_seconds_total[1m])) by (instance)) * 100
+      - record: cluster:node_memory:used_memory_percent
+        expr: (1 - sum(node_memory_MemAvailable_bytes) by(instance) / sum(node_memory_MemTotal_bytes) by(instance)) * 100
+      - record: cluster:node_disk:disk_read_io
+        expr: sum(rate(node_disk_read_bytes_total[1m])) by (instance)
+      - record: cluster:node_disk:disk_write_io
+        expr: sum(rate(node_disk_written_bytes_total[1m])) by (instance)
+      - record: cluster:net:network_receive_io
+        expr: sum(irate(node_network_receive_bytes_total{device!~"lo | veth.* | docker.* | flannel.* | cali.* | cbr."}[1m])) by (instance)
+      - record: cluster:net:network_transmit_io
+        expr: sum(irate(node_network_transmit_bytes_total{device!~"lo | veth.* | docker.* | flannel.* | cali.* | cbr."}[1m])) by (instance)
+
+      # cluster container stats
+      - record: hstream:container_cpu:usage_percent_1m
+        expr: (sum(rate(container_cpu_usage_seconds_total{name!=""}[1m])) BY (instance, name) * 100)
+      - record: hstream:container_mem:usage_memory_bytes_1m
+        expr: (sum(container_memory_working_set_bytes{name!=""}) BY (instance, name))
+      - record: hstream:container_fs:write_bytes_1m
+        expr: sum(rate(container_fs_writes_bytes_total[1m])) BY (instance, name)
+      - record: hstream:container_fs:read_bytes_1m
+        expr: sum(rate(container_fs_read_bytes_total[1m])) BY (instance, name)
+      - record: hstream:container_net:receive_bytes_1m
+        expr: sum(rate(container_network_receive_bytes_total[1m])) by (instance, name)
+      - record: hstream:container_net:transmit_bytes_1m
+        expr: sum(rate(container_network_transmit_bytes_total[1m])) by (instance, name)
+
+      # hserver container stats
+      - record: hstream:hserver_cpu:usage_percent_1m
+        expr: hstream:container_cpu:usage_percent_1m{name="deploy_hserver"}
+      - record: hstream:hserver_mem:usage_memory_bytes_1m
+        expr: hstream:container_cpu:usage_percent_1m{name="deploy_hserver"}
+      - record: hstream:hserver_net:receive_bytes_1m
+        expr: hstream:container_net:receive_bytes_1m{name="deploy_hserver"}
+      - record: hstream:hserver_net:transmit_bytes_1m
+        expr: hstream:container_net:transmit_bytes_1m{name="deploy_hserver"}
+
+      # hstore container stats
+      - record: hstream:hstore_cpu:usage_percent_1m
+        expr: hstream:container_cpu:usage_percent_1m{name="deploy_hstore"}
+      - record: hstream:hstore_mem:usage_memory_bytes_1m
+        expr: hstream:container_cpu:usage_percent_1m{name="deploy_hstore"}
+      - record: hstream:hstore_net:receive_bytes_1m
+        expr: hstream:container_net:receive_bytes_1m{name="deploy_hstore"}
+      - record: hstream:hstore_net:transmit_bytes_1m
+        expr: hstream:container_net:transmit_bytes_1m{name="deploy_hstore"}
+      - record: hstream:hstore_fs:write_bytes_1m
+        expr: hstream:container_fs:write_bytes_1m{name="deploy_hstore"}
+      - record: hstream:hstore_fs:read_bytes_1m
+        expr: hstream:container_fs:read_bytes_1m{name="deploy_hstore"}
+  - name: zookeeper_common
+    rules:
+      - record: zk_approximate_data_size
+        expr: approximate_data_size
+      - record: zk_avg_latency
+        expr: avg_latency
+      - record: zk_znode_count
+        expr: znode_count
+      - record: zk_ephemerals_count
+        expr: ephemerals_count
+      - record: zk_open_file_descriptor_count
+        expr: open_file_descriptor_count
+      - record: zk_max_latency
+        expr: max_latency
+      - record: zk_min_latency
+        expr: min_latency
+      - record: zk_avg_latency
+        expr: avg_latency
+      - record: zk_num_alive_connections
+        expr: num_alive_connections
+      - record: zk_outstanding_requests
+        expr: outstanding_requests
+      - record: zk_packets_received
+        expr: packets_received
+      - record: zk_packets_sent
+        expr: packets_sent
+      - record: zk_synced_followers
+        expr: synced_followers
+      - record: zk_pending_syncs
+        expr: pending_syncs
+      - record: zk_unrecoverable_error_count
+        expr: unrecoverable_error_count
+      - record: zk_uptime_ms
+        expr: uptime
+      - record: zk_commit_count
+        expr: commit_count
+      - record: zk_outstanding_requests
+        expr: outstanding_requests
+      - record: zk_ack_latency_sum_rate_5min
+        expr: rate(ack_latency_sum[5m])
+
+  - name: zookeeper_watcher
+    rules:
+      - record: zk_watch_count
+        expr: watch_count
+      - record: zk_node_changed_watch_count
+        expr: node_changed_watch_count_sum
+      - record: zk_node_children_watch_count
+        expr: node_children_watch_count_sum
+      - record: zk_node_deleted_watch_count
+        expr: node_deleted_watch_count_sum
+      - record: zk_node_created_watch_count
+        expr: node_created_watch_count_sum
+      - record: zk_dead_watchers_cleared
+        expr: dead_watchers_cleared
+
+  - name: zookeeper_quorum
+    rules:
+      - record: zk_leader_uptime
+        expr: leader_uptime
+      - record: zk_leaners
+        expr: leaners
+      - record: zk_quorum_size
+        expr: quorum_size
+      - record: zk_election_time_ms
+        expr: election_time
+      - record: zk_election_time_count
+        expr: election_time_count
+      - record: zk_election_time_sum_ms
+        expr: election_time_sum
+      - record: zk_election_avg_time_ms
+        expr: election_time_sum/election_time_count
+      - record: zk_quit_leading_due_to_disloyal_voter
+        expr: quit_leading_due_to_disloyal_voter
+      - record: zk_commit_process_time_sum_rate_5min
+        expr: rate(commit_process_time_sum[5m])
+      - record: zk_read_commitproc_time_rate_5min
+        expr: rate(read_commitproc_time_ms_sum[5m])
+      - record: zk_write_commitproc_time_rate_5min
+        expr: rate(write_commitproc_time_ms_sum[5m])
+      - record: zk_quorum_ack_latency_rate_5min
+        expr: rate(quorum_ack_latency_sum[5m])
+
+  - name: zookeeper_read_write
+    rules:
+      - record: zk_write_per_namespace_bytes
+        expr: write_per_namespace{key!="logdevice.conf"}
+      - record: zk_read_per_namespace_bytes
+        expr: read_per_namespace{key!="logdevice.conf"}
+      - record: zk_fsynctime_ms
+        expr: fsynctime
+      - record: zk_fsynctime_sum_ms
+        expr: fsynctime_sum
+      - record: zk_fsynctime_avg_ms
+        expr: fsynctime_sum/fsynctime_count
+      - record: zk_fsynctime_rate_1min
+        expr: irate(fsynctime_sum[1m])
+      - record: zk_readlatency_sum_ms
+        expr: readlatency_sum
+      - record: zk_readlatency_sum_rate_1min
+        expr: rate(readlatency_sum[1m])
+      - record: zk_updatelatency_sum_ms
+        expr: updatelatency_sum
+      - record: zk_updatelatency_sum_rate_1min
+        expr: rate(updatelatency_sum[1m])
+
+  - name: zookeeper_snapshot_and_txn
+    rules:
+      - record: zk_snap_count
+        expr: snap_count
+      - record: zk_snapshottime_sum_ms
+        expr: snapshottime_sum
+      - record: zk_snapshottime_count
+        expr: snapshottime_count
+      - record: zk_snapshottime_avg_ms
+        expr: snapshottime_sum/snapshottime_count
+
+  - name: zookeeper_jvm
+    rules:
+      - record: zk_jvm_threads_current
+        expr: jvm_threads_current
+      - record: zk_jvm_gc_collection_seconds_sum
+        expr: jvm_gc_collection_seconds_sum
+      - record: zk_jvm_memory_pool_bytes_used
+        expr: jvm_memory_pool_bytes_used

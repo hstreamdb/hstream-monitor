@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hstream-exporter
+  labels:
+    app: hstream-exporter
+spec:
+  selector:
+    matchLabels:
+      app: hstream-exporter
+  endpoints:
+    - port: http
+      interval: 15s
+  namespaceSelector:
+    matchNames:
+      - monitoring

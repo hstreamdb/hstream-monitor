@@ -1,0 +1,27 @@
+# 自定义告警发送器，参考https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/user-guides/alerting.md
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: slack-notifier
+  namespace: monitoring
+  labels:
+    alertmanagerConfig: hstream-alert
+spec:
+  receivers:
+    - name: "slack-notifier"
+      slackConfigs:
+        - apiURL: 
+            name: alertmanager-config-slack-notify-url
+            key: url
+          channel: '#hstream-notify'
+          username: 'hstream-alert'
+          iconEmoji: ':bell:'
+          title:   '{{ .CommonLabels.alertname }}'
+          text:    'Summary: {{ .CommonAnnotations.summary }}\nDescription: {{ .CommonAnnotations.description }}'
+          sendResolved: true 
+  route:
+    receiver: "slack-notifier"
+    groupBy: ["instance"]
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 1h

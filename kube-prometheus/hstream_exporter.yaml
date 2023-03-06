@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hstream-exporter
+  labels:
+    app: hstream-exporter
+spec:
+  ports:
+    - port: 9250
+      name: http
+      protocol: TCP
+  selector:
+    app: hstream-exporter
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: hstream-exporter
+  namespace: monitoring
+spec:
+  serviceName: "hstream-exporter"
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hstream-exporter
+  template:
+    metadata:
+      labels:
+        app: hstream-exporter
+    spec:
+      containers:
+        - name: hstream-exporter
+          image: "hstreamdb/hstream-exporter"
+          imagePullPolicy: IfNotPresent
+          command:
+            - bash
+            - "-c"
+            - |
+              set -ex
+              /usr/local/bin/hstream-exporter \
+              -addr "hstream://hstreamdb-sample-hserver.default:6570" \
+              -listen-addr "0.0.0.0:9250"
+          ports:
+            - name: http
+              containerPort: 9250
+

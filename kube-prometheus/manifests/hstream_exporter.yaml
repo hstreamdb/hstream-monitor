@@ -4,6 +4,7 @@ metadata:
   name: hstream-exporter
   labels:
     app: hstream-exporter
+  namespace: monitoring
 spec:
   ports:
     - port: 9250

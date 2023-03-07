@@ -1,0 +1,3 @@
+local/
+/deploy/prometheus/slack-notifty-url.txt
+/deploy/prometheus/kustomization.yaml

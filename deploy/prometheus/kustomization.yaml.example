@@ -1,0 +1,36 @@
+bases:
+  - ../../kube-prometheus
+
+patches:
+  # grafana-pvc.yaml
+  - target:
+      kind: PersistentVolumeClaim
+    patch: |-
+      - op: replace
+        path: /spec/storageClassName
+        value: ssd
+  # prometheus-prometheus.yaml
+  - target:
+      kind: Prometheus
+      labelSelector: app.kubernetes.io/component=prometheus
+      namespace: monitoring
+    patch: |-
+      - op: replace
+        path: /spec/storage/volumeClaimTemplate/spec/storageClassName
+        value: ssd
+  # hstream_exporter.yaml
+  - target:
+      kind: StatefulSet
+      name: hstream-exporter
+      namespace: monitoring
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value:
+          - bash
+          - "-c"
+          - |
+            set -ex
+            /usr/local/bin/hstream-exporter \
+              -addr "hstream://hstreamdb-hserver.default:6570" \
+              -listen-addr "0.0.0.0:9250"

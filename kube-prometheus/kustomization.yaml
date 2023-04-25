@@ -32,7 +32,6 @@ resources:
   - manifests/grafana-serviceMonitor.yaml
   - manifests/grafana-service.yaml
   - manifests/hstream-exporter-serviceMonitor.yaml
-  - manifests/hstream-exporter.yaml
   - manifests/kubePrometheus-prometheusRule.yaml
   - manifests/kubernetesControlPlane-prometheusRule.yaml
   - manifests/kubernetesControlPlane-serviceMonitorApiserver.yaml

@@ -23,6 +23,13 @@ kubectl create secret \
   --from-file=./deploy/prometheus/slack-notifty-url.txt
 
 kubectl apply -k deploy/prometheus
+
+cp deploy/hstream-exporter/kustomization.yaml.example deploy/hstream-exporter/kustomization.yaml
+
+# edit kustomization.yaml
+# ...
+
+kubectl apply -k deploy/hstream-exporter
 ```
 
 For details, see [kube-prometheus](./kube-prometheus/README.md)

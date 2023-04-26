@@ -1,3 +1,4 @@
 local/
 /deploy/prometheus/slack-notifty-url.txt
 /deploy/prometheus/kustomization.yaml
+/deploy/hstream-exporter/kustomization.yaml

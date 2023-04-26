@@ -22,6 +22,7 @@ resources:
   - manifests/grafana-config.yaml
   - manifests/grafana-dashboardDatasources.yaml
   - manifests/grafana-dashboardDefinitions.yaml
+  - manifests/grafana-dashboard-hstream.yaml
   - manifests/grafana-dashboardSources.yaml
   - manifests/grafana-deployment.yaml
   - manifests/grafana-networkPolicy.yaml

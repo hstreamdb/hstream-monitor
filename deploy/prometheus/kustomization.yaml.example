@@ -1,6 +1,19 @@
 bases:
   - ../../kube-prometheus
 
+configMapGenerator:
+  - name: grafana-dashboard-hstream
+    namespace: monitoring
+    options:
+      disableNameSuffixHash: true
+      labels:
+        app.kubernetes.io/component: grafana
+        app.kubernetes.io/name: grafana
+        app.kubernetes.io/part-of: kube-prometheus
+        app.kubernetes.io/version: 9.3.2
+    files:
+    - dashboard/hstream-overview.json
+
 patches:
   # grafana-pvc.yaml
   - target:

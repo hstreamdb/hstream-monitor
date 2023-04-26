@@ -53,7 +53,7 @@ spec:
             - ALL
           readOnlyRootFilesystem: true
         volumeMounts:
-        - mountPath: /grafana-dashboard-definitions/0/hstream-overview
+        - mountPath: /grafana-dashboard-definitions/1/hstream
           name: grafana-dashboard-hstream-overview
           readOnly: false
         - mountPath: /var/lib/grafana
@@ -156,7 +156,7 @@ spec:
       volumes:
       # 挂载 hstream dashboard 配置文件
       - configMap:
-          name: grafana-dashboard-hstream-overview
+          name: grafana-dashboard-hstream
         name: grafana-dashboard-hstream-overview
       # 挂载 pvc
       - persistentVolumeClaim:

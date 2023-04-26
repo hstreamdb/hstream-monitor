@@ -13,6 +13,16 @@ data:
                 },
                 "orgId": 1,
                 "type": "file"
+            },
+            {
+                "folder": "Hstream",
+                "folderUid": "",
+                "name": "1",
+                "options": {
+                    "path": "/grafana-dashboard-definitions/1"
+                },
+                "orgId": 1,
+                "type": "file"
             }
         ]
     }
